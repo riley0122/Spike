@@ -117,6 +117,7 @@ void setup_network() {
   WiFi.disconnect();
   delay(100);
 
+  WiFi.setHostname(DEVICE_NAME);
   WiFi.begin(network_ssid, network_pass);
   LOG_INFO("setup_network", "Connecting to network");
   while (WiFi.status() != WL_CONNECTED) {
@@ -124,6 +125,7 @@ void setup_network() {
     delay(1000);
   }
   LOG_INFO("setup_network", "Connected! Local IP: " << WiFi.localIP());
+  state = Alive;
 }
 
 void setup() {
