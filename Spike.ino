@@ -1,6 +1,7 @@
 #include <EasyLogger.h>
 #include "config.h"
 #include "BluetoothSerial.h"
+#include <WiFi.h>
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
@@ -44,6 +45,52 @@ void clear_bt_input_buffer() {
   current_index = 0;
 }
 
+bool buffer_comp(char* a, char* b, int length) {
+  for(int i = 0; i < length; ++i) {
+    if (a[i] != b[i]) return false;  
+  }
+  return true;
+}
+
+enum dataType {
+  Command,
+  SSID,
+  Password
+};
+
+enum dataType expecting = Command;
+
+char* network_ssid = (char*)malloc(INPUT_BUFFER_SIZE * sizeof(char));
+char* network_pass = (char*)malloc(INPUT_BUFFER_SIZE * sizeof(char));
+
+void command_callback() {
+  LOG_DEBUG("Command_callback", expecting);
+  if (expecting == Command && buffer_comp("set_ssid", bt_incoming_buffer, 8)) {
+    LOG_INFO("command_callback", "Awaiting ssid");
+    expecting = SSID;
+  } else if (expecting == SSID) {
+    memcpy(network_ssid, bt_incoming_buffer, sizeof(char) * INPUT_BUFFER_SIZE);
+    expecting = Command;
+  } else if (expecting == Command && buffer_comp("get_ssid", bt_incoming_buffer, 8)) {
+    SerialBT.print("Current SSID: ");
+    SerialBT.println(network_ssid);
+  } if (expecting == Command && buffer_comp("set_pass", bt_incoming_buffer, 8)) {
+    LOG_INFO("command_callback", "Awaiting password");
+    expecting = Password;
+  } else if (expecting == Password) {
+    memcpy(network_pass, bt_incoming_buffer, sizeof(char) * INPUT_BUFFER_SIZE);
+    expecting = Command;
+  } else if (expecting == Command && buffer_comp("connect", bt_incoming_buffer, 8)) {
+    SerialBT.println("Goodbye!");
+    SerialBT.disconnect();
+    SerialBT.end();
+    state = Ready;
+  } else {
+    SerialBT.println("Invalid command!");
+    LOG_WARNING("command_callback", "Invalid Command!");
+  }
+}
+
 void handle_bt() {
  if (SerialBT.available()) {
   if (current_index >= INPUT_BUFFER_SIZE) {
@@ -56,13 +103,27 @@ void handle_bt() {
 
   if (input == ';') {
     LOG_INFO("handle_bt", "Got input: " << bt_incoming_buffer);
+    command_callback();
     clear_bt_input_buffer();
-    return;
+  } else {
+    bt_incoming_buffer[current_index] = input;
+    ++current_index;
   }
-
-  bt_incoming_buffer[current_index] = input;
-  ++current_index;
  }
+}
+
+void setup_network() {
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
+
+  WiFi.begin(network_ssid, network_pass);
+  LOG_INFO("setup_network", "Connecting to network");
+  while (WiFi.status() != WL_CONNECTED) {
+    LOG_INFO("setup_network", "Not yet connected...");
+    delay(1000);
+  }
+  LOG_INFO("setup_network", "Connected! Local IP: " << WiFi.localIP());
 }
 
 void setup() {
@@ -86,6 +147,7 @@ void loop() {
       handle_bt();
     break;
     case Ready:
+      setup_network();
     break;
     case Alive:
     break;
