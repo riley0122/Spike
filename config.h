@@ -1,0 +1,2 @@
+#define DEVICE_NAME "Spike"
+#define INPUT_BUFFER_SIZE 128
